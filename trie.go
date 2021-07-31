@@ -53,12 +53,15 @@ func (t *Trie) Root() *Node {
 // is stored as `interface{}` and must be type cast by
 // the caller.
 func (t *Trie) Add(key string, meta interface{}) *Node {
+	return t.AddAtNode(key, t.root, meta)
+}
+
+func (t *Trie) AddAtNode(key string, node *Node, meta interface{}) *Node {
 	t.mu.Lock()
 
 	t.size++
 	runes := []rune(key)
 	bitmask := maskruneslice(runes)
-	node := t.root
 	node.mask |= bitmask
 	node.termCount++
 	for i := range runes {
@@ -142,6 +145,8 @@ func (t *Trie) Keys() []string {
 
 // Performs a fuzzy search against the keys in the trie.
 func (t Trie) FuzzySearch(pre string) []string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	keys := fuzzycollect(t.Root(), []rune(pre))
 	sort.Sort(ByKeys(keys))
 	return keys
@@ -149,6 +154,8 @@ func (t Trie) FuzzySearch(pre string) []string {
 
 // Performs a prefix search against the keys in the trie.
 func (t Trie) PrefixSearch(pre string) []string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	node := findNode(t.Root(), []rune(pre))
 	if node == nil {
 		return nil

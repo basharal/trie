@@ -23,7 +23,7 @@ type Node struct {
 }
 
 type Trie struct {
-	mu   sync.Mutex
+	mu   sync.RWMutex
 	root *Node
 	size int
 }
@@ -81,7 +81,15 @@ func (t *Trie) Add(key string, meta interface{}) *Node {
 // Finds and returns meta data associated
 // with `key`.
 func (t *Trie) Find(key string) (*Node, bool) {
-	node := findNode(t.Root(), []rune(key))
+	return t.FindAtNode(key, t.Root())
+}
+
+// Finds and returns meta data associated
+// with `key` relative to n.
+func (t *Trie) FindAtNode(key string, n *Node) (*Node, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	node := findNode(n, []rune(key))
 	if node == nil {
 		return nil, false
 	}
@@ -95,6 +103,8 @@ func (t *Trie) Find(key string) (*Node, bool) {
 }
 
 func (t *Trie) HasKeysWithPrefix(key string) bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	node := findNode(t.Root(), []rune(key))
 	return node != nil
 }

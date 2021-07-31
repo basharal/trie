@@ -174,30 +174,33 @@ func (t Trie) PrefixSearch(pre string) []string {
 	return collect(node)
 }
 
-func (t Trie) ExactSearchAtNode(s string, n *Node) ([]string, error) {
-	// Walk children until we find a dirSep
+func (t Trie) ExactSearchAtNode(s string, n *Node) ([]string, []*Node, error) {
 	res := make([]string, 0)
+	nodes := make([]*Node, 0)
 	walker := func(node *Node, name, path string) {
 		if strings.EqualFold(s, name) {
 			res = append(res, path)
+			nodes = append(nodes, node)
 		}
 	}
 	if err := t.WalkAtNode(n, walker, true); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return res, nil
+	return res, nodes, nil
 }
 
-func (t Trie) ListAtNode(s string, n *Node) ([]string, error) {
+func (t Trie) ListAtNode(s string, n *Node) ([]string, []*Node, error) {
 	// Walk children until we find a dirSep
 	res := make([]string, 0)
+	nodes := make([]*Node, 0)
 	walker := func(node *Node, name, path string) {
 		res = append(res, name)
+		nodes = append(nodes, node)
 	}
 	if err := t.WalkAtNode(n, walker, false); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return res, nil
+	return res, nodes, nil
 }
 
 func (t Trie) WalkAtNode(n *Node, walker WalkFunc, nested bool) error {
@@ -232,7 +235,7 @@ func (t Trie) walkAtNode(n *Node, walker WalkFunc, name []rune, nested bool) {
 				if nested {
 					t.walkAtNode(child, walker, name, nested)
 				} else {
-					walker(n, string(name), child.children[nul].path)
+					walker(child.children[nul], string(name), child.children[nul].path)
 				}
 			} else {
 				name = append(name, r)
@@ -301,6 +304,15 @@ func (n Node) Depth() int {
 
 func (n Node) Path() string {
 	return n.path
+}
+
+func (n Node) Name() string {
+	path := []rune(n.path)
+	if len(path) > 0 && path[len(path)-1] == dirSep {
+		path = path[:len(path)-1]
+	}
+	idx := strings.LastIndex(string(path), "/")
+	return string(path[idx+1:])
 }
 
 // Returns a uint64 representing the current

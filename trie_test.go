@@ -310,12 +310,15 @@ func TestExactSearchAtNode(t *testing.T) {
 			}
 
 			root, _ := trie.Find("/")
-			expected, err := trie.ExactSearchAtNode(test.search, root)
+			expected, nodes, err := trie.ExactSearchAtNode(test.search, root)
 			if err != nil {
 				t.Error(err)
 			}
 			if len(expected) != len(test.expectedKeys) {
 				t.Errorf("Expected %v paths, got %d, paths were: %v", len(test.expectedKeys), len(expected), expected)
+			}
+			if len(nodes) != len(test.expectedKeys) {
+				t.Errorf("Expected %v nodes, got %d, nodes were: %v", len(test.expectedKeys), len(nodes), nodes)
 			}
 
 			sort.Strings(expected)
@@ -324,6 +327,18 @@ func TestExactSearchAtNode(t *testing.T) {
 					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
 				}
 			}
+			// Make sure node paths match
+			paths := make([]string, 0)
+			for _, n := range nodes {
+				paths = append(paths, n.Path())
+			}
+			sort.Strings(paths)
+			for i, key := range paths {
+				if key != test.expectedKeys[i] {
+					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
+				}
+			}
+
 		})
 	}
 }
@@ -349,12 +364,15 @@ func TestListAtNode(t *testing.T) {
 
 			root, _ := trie.Find(test.search)
 
-			expected, err := trie.ListAtNode(test.search, root)
+			expected, nodes, err := trie.ListAtNode(test.search, root)
 			if err != nil {
 				t.Error(err)
 			}
 			if len(expected) != len(test.expectedKeys) {
 				t.Errorf("Expected %v paths, got %d, paths were: %v", len(test.expectedKeys), len(expected), expected)
+			}
+			if len(nodes) != len(test.expectedKeys) {
+				t.Errorf("Expected %v nodes, got %d, nodes were: %v", len(test.expectedKeys), len(nodes), nodes)
 			}
 
 			sort.Strings(expected)
@@ -363,6 +381,19 @@ func TestListAtNode(t *testing.T) {
 					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
 				}
 			}
+
+			// Make sure node names match
+			names := make([]string, 0)
+			for _, n := range nodes {
+				names = append(names, n.Name())
+			}
+			sort.Strings(names)
+			for i, key := range names {
+				if key != test.expectedKeys[i] {
+					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
+				}
+			}
+
 		})
 	}
 }

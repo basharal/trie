@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/golang/glog"
 )
 
 const (
@@ -180,13 +182,25 @@ func (t Trie) ExactSearchAtNode(s string, n *Node) ([]string, error) {
 			res = append(res, path)
 		}
 	}
-	if err := t.WalkAtNode(n, walker); err != nil {
+	if err := t.WalkAtNode(n, walker, true); err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-func (t Trie) WalkAtNode(n *Node, walker WalkFunc) error {
+func (t Trie) ListAtNode(s string, n *Node) ([]string, error) {
+	// Walk children until we find a dirSep
+	res := make([]string, 0)
+	walker := func(node *Node, name, path string) {
+		res = append(res, name)
+	}
+	if err := t.WalkAtNode(n, walker, false); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (t Trie) WalkAtNode(n *Node, walker WalkFunc, nested bool) error {
 	if !n.Terminating() || n.Parent().Val() != dirSep {
 		return fmt.Errorf("Node must be terminating and a dir")
 	}
@@ -194,11 +208,12 @@ func (t Trie) WalkAtNode(n *Node, walker WalkFunc) error {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	name := make([]rune, 0)
-	t.walkAtNode(n.parent, walker, name)
+	t.walkAtNode(n.parent, walker, name, nested)
 	return nil
 }
 
-func (t Trie) walkAtNode(n *Node, walker WalkFunc, name []rune) {
+func (t Trie) walkAtNode(n *Node, walker WalkFunc, name []rune, nested bool) {
+	glog.V(2).Infof("Walking node: %+v, name: %s\n", n, string(name))
 	if n.Terminating() {
 		if len(name) > 0 { // Exclude root, which is empty
 			walker(n, string(name), n.path)
@@ -211,15 +226,17 @@ func (t Trie) walkAtNode(n *Node, walker WalkFunc, name []rune) {
 	}
 	for r, child := range n.children {
 		if child.Terminating() {
-			t.walkAtNode(child, walker, name)
+			t.walkAtNode(child, walker, name, nested)
 		} else {
 			if r == dirSep {
-				// We need to do 2 things. Process and start
-				// a new subdir
-				t.walkAtNode(child, walker, name)
+				if nested {
+					t.walkAtNode(child, walker, name, nested)
+				} else {
+					walker(n, string(name), child.children[nul].path)
+				}
 			} else {
 				name = append(name, r)
-				t.walkAtNode(child, walker, name)
+				t.walkAtNode(child, walker, name, nested)
 				name = name[:len(name)-1]
 			}
 		}

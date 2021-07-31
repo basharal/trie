@@ -328,6 +328,45 @@ func TestExactSearchAtNode(t *testing.T) {
 	}
 }
 
+func TestListAtNode(t *testing.T) {
+	tableTests := []struct {
+		name         string
+		keys         []string
+		search       string
+		expectedKeys []string
+	}{
+		{"One", []string{"/", "/foo", "/foobar"}, "/", []string{"foo", "foobar"}},
+		{"Nested", []string{"/", "/foo/", "/foo/foo", "/foo/bar"}, "/foo/", []string{"bar", "foo"}},
+		{"Intermediate", []string{"/", "/foo/", "/foo/foo", "/foo/bar"}, "/", []string{"foo"}},
+	}
+
+	for _, test := range tableTests {
+		t.Run(test.name, func(t *testing.T) {
+			trie := New()
+			for _, key := range test.keys {
+				trie.Add(key, nil)
+			}
+
+			root, _ := trie.Find(test.search)
+
+			expected, err := trie.ListAtNode(test.search, root)
+			if err != nil {
+				t.Error(err)
+			}
+			if len(expected) != len(test.expectedKeys) {
+				t.Errorf("Expected %v paths, got %d, paths were: %v", len(test.expectedKeys), len(expected), expected)
+			}
+
+			sort.Strings(expected)
+			for i, key := range expected {
+				if key != test.expectedKeys[i] {
+					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkTieKeys(b *testing.B) {
 	trie := New()
 	keys := []string{"bar", "foo", "baz", "bur", "zum", "burzum", "bark", "barcelona", "football", "foosball", "footlocker"}

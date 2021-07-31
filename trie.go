@@ -6,8 +6,14 @@
 package trie
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 	"sync"
+)
+
+const (
+	dirSep = '/'
 )
 
 type Node struct {
@@ -35,6 +41,8 @@ func (a ByKeys) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByKeys) Less(i, j int) bool { return len(a[i]) < len(a[j]) }
 
 const nul = 0x0
+
+type WalkFunc func(node *Node, name, path string)
 
 // Creates a new Trie with an initialized root Node.
 func New() *Trie {
@@ -164,6 +172,61 @@ func (t Trie) PrefixSearch(pre string) []string {
 	return collect(node)
 }
 
+func (t Trie) ExactSearchAtNode(s string, n *Node) ([]string, error) {
+	// Walk children until we find a dirSep
+	res := make([]string, 0)
+	walker := func(node *Node, name, path string) {
+		if strings.EqualFold(s, name) {
+			res = append(res, path)
+		}
+	}
+	if err := t.WalkAtNode(n, walker); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (t Trie) WalkAtNode(n *Node, walker WalkFunc) error {
+	if !n.Terminating() || n.Parent().Val() != dirSep {
+		return fmt.Errorf("Node must be terminating and a dir")
+	}
+
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	name := make([]rune, 0)
+	t.walkAtNode(n.parent, walker, name)
+	return nil
+}
+
+func (t Trie) walkAtNode(n *Node, walker WalkFunc, name []rune) {
+	if n.Terminating() {
+		if len(name) > 0 { // Exclude root, which is empty
+			walker(n, string(name), n.path)
+		}
+		return
+	}
+	if n.parent.val == dirSep {
+		// Reset name after every nested directory.
+		name = []rune{n.val}
+	}
+	for r, child := range n.children {
+		if child.Terminating() {
+			t.walkAtNode(child, walker, name)
+		} else {
+			if r == dirSep {
+				// We need to do 2 things. Process and start
+				// a new subdir
+				t.walkAtNode(child, walker, name)
+			} else {
+				name = append(name, r)
+				t.walkAtNode(child, walker, name)
+				name = name[:len(name)-1]
+			}
+		}
+
+	}
+}
+
 // Creates and returns a pointer to a new child for the node.
 func (parent *Node) NewChild(val rune, path string, bitmask uint64, meta interface{}, term bool) *Node {
 	node := &Node{
@@ -217,6 +280,10 @@ func (n Node) Val() rune {
 
 func (n Node) Depth() int {
 	return n.depth
+}
+
+func (n Node) Path() string {
+	return n.path
 }
 
 // Returns a uint64 representing the current

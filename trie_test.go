@@ -289,6 +289,45 @@ func TestFuzzySearchSorting(t *testing.T) {
 
 }
 
+func TestExactSearchAtNode(t *testing.T) {
+	tableTests := []struct {
+		name         string
+		keys         []string
+		search       string
+		expectedKeys []string
+	}{
+		{"One", []string{"/", "/foo", "/foobar"}, "foo", []string{"/foo"}},
+		{"Nested", []string{"/", "/foo", "/foo/foo"}, "foo", []string{"/foo", "/foo/foo"}},
+		{"Two", []string{"/", "/foo", "/bar/foo"}, "foo", []string{"/bar/foo", "/foo"}},
+		{"Intermediate", []string{"/", "/foo", "/bar/foo", "/bar"}, "bar", []string{"/bar"}},
+	}
+
+	for _, test := range tableTests {
+		t.Run(test.name, func(t *testing.T) {
+			trie := New()
+			for _, key := range test.keys {
+				trie.Add(key, nil)
+			}
+
+			root, _ := trie.Find("/")
+			expected, err := trie.ExactSearchAtNode(test.search, root)
+			if err != nil {
+				t.Error(err)
+			}
+			if len(expected) != len(test.expectedKeys) {
+				t.Errorf("Expected %v paths, got %d, paths were: %v", len(test.expectedKeys), len(expected), expected)
+			}
+
+			sort.Strings(expected)
+			for i, key := range expected {
+				if key != test.expectedKeys[i] {
+					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkTieKeys(b *testing.B) {
 	trie := New()
 	keys := []string{"bar", "foo", "baz", "bur", "zum", "burzum", "bark", "barcelona", "football", "foosball", "footlocker"}

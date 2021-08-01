@@ -65,8 +65,13 @@ func (t *Trie) Root() *Node {
 func (t *Trie) Add(key string, meta interface{}) *Node {
 	return t.AddAtNode(key, t.root, meta)
 }
-
 func (t *Trie) AddAtNode(key string, node *Node, meta interface{}) *Node {
+	if node.Terminating() {
+		return t.addAtNode(key, node.parent, node.path, meta)
+	}
+	return t.addAtNode(key, node, node.path, meta)
+}
+func (t *Trie) addAtNode(key string, node *Node, path string, meta interface{}) *Node {
 	t.mu.Lock()
 
 	t.size++
@@ -85,7 +90,7 @@ func (t *Trie) AddAtNode(key string, node *Node, meta interface{}) *Node {
 		}
 		node.termCount++
 	}
-	node = node.NewChild(nul, key, 0, meta, true)
+	node = node.NewChild(nul, path+key, 0, meta, true)
 	t.mu.Unlock()
 
 	return node
@@ -100,6 +105,15 @@ func (t *Trie) Find(key string) (*Node, bool) {
 // Finds and returns meta data associated
 // with `key` relative to n.
 func (t *Trie) FindAtNode(key string, n *Node) (*Node, bool) {
+	if n.Terminating() {
+		return t.findAtNode(key, n.parent)
+	}
+	return t.findAtNode(key, n)
+}
+
+// Finds and returns meta data associated
+// with `key` relative to n.
+func (t *Trie) findAtNode(key string, n *Node) (*Node, bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	node := findNode(n, []rune(key))
@@ -122,14 +136,36 @@ func (t *Trie) HasKeysWithPrefix(key string) bool {
 	return node != nil
 }
 
+// Removes a key from the trie relative to node. Node must be terminating
+// Hence we use 'parent' so it can search for key relative to it.
+func (t *Trie) RemoveAtNode(key string, node *Node) {
+	if node.Terminating() {
+		t.removeAtNode(key, node)
+	}
+
+	t.removeAtNode(key, node.parent)
+}
+
 // Removes a key from the trie, ensuring that
 // all bitmasks up to root are appropriately recalculated.
 func (t *Trie) Remove(key string) {
+	t.removeAtNode(key, t.Root())
+}
+
+// Removes a key from the trie relative to node, ensuring that
+// all bitmasks up to root are appropriately recalculated.
+func (t *Trie) removeAtNode(key string, start *Node) {
+	if key == "" {
+		return
+	}
 	var (
 		i    int
 		rs   = []rune(key)
-		node = findNode(t.Root(), []rune(key))
+		node = findNode(start, []rune(key))
 	)
+	if node == nil {
+		return
+	}
 	t.mu.Lock()
 
 	t.size--
@@ -322,6 +358,7 @@ func (n Node) Mask() uint64 {
 }
 
 func findNode(node *Node, runes []rune) *Node {
+	glog.V(2).Infof("find node %+v - %s.\n", node, string(runes))
 	if node == nil {
 		return nil
 	}

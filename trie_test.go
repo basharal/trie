@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -35,6 +36,29 @@ func TestTrieAdd(t *testing.T) {
 	}
 }
 
+func TestTrieAddAtNode(t *testing.T) {
+	trie := New()
+
+	n := trie.Add("foo/", 1)
+	n2 := trie.AddAtNode("bar", n, 2)
+	if n2.Meta().(int) != 2 {
+		t.Errorf("Expected 2, got: %d", n2.Meta().(int))
+	}
+
+	keys := trie.Keys()
+
+	if len(keys) != 2 {
+		t.Errorf("Expected 2 keys got %d", len(keys))
+	}
+
+	for _, k := range keys {
+		if k != "foo/" && k != "foo/bar" {
+			t.Errorf("key was: %s", k)
+		}
+	}
+
+}
+
 func TestTrieFind(t *testing.T) {
 	trie := New()
 	trie.Add("foo", 1)
@@ -46,6 +70,21 @@ func TestTrieFind(t *testing.T) {
 
 	if n.Meta().(int) != 1 {
 		t.Errorf("Expected 1, got: %d", n.Meta().(int))
+	}
+}
+
+func TestTrieFindAtNode(t *testing.T) {
+	trie := New()
+	n := trie.Add("foo/", 1)
+	trie.Add("foo/bar", 2)
+
+	n, ok := trie.FindAtNode("bar", n)
+	if ok != true {
+		t.Fatal("Could not find node")
+	}
+
+	if n.Meta().(int) != 2 {
+		t.Errorf("Expected 2, got: %d", n.Meta().(int))
 	}
 }
 
@@ -123,6 +162,40 @@ func TestRemove(t *testing.T) {
 
 	for _, k := range keys {
 		if k != "football" && k != "foostar" {
+			t.Errorf("Expected football got: %#v", k)
+		}
+	}
+}
+
+func TestRemoveAtNode(t *testing.T) {
+	trie := New()
+	initial := []string{"football/", "football/foostar", "foosball"}
+
+	for _, key := range initial {
+		trie.Add(key, nil)
+	}
+
+	n, _ := trie.Find("football/")
+	trie.RemoveAtNode("foostar", n)
+	keys := trie.Keys()
+
+	if len(keys) != 2 {
+		t.Errorf("Expected 2 keys got %d", len(keys))
+	}
+
+	for _, k := range keys {
+		if k != "football/" && k != "foosball" {
+			t.Errorf("key was: %s", k)
+		}
+	}
+
+	keys = trie.FuzzySearch("foo")
+	if len(keys) != 2 {
+		t.Errorf("Expected 2 keys got %d", len(keys))
+	}
+
+	for _, k := range keys {
+		if k != "football/" && k != "foosball" {
 			t.Errorf("Expected football got: %#v", k)
 		}
 	}
@@ -287,6 +360,149 @@ func TestFuzzySearchSorting(t *testing.T) {
 		}
 	}
 
+}
+
+func TestExactSearchAtNode(t *testing.T) {
+	tableTests := []struct {
+		name         string
+		keys         []string
+		search       string
+		expectedKeys []string
+	}{
+		{"One", []string{"/", "/foo", "/foobar"}, "foo", []string{"/foo"}},
+		{"Nested", []string{"/", "/foo", "/foo/foo"}, "foo", []string{"/foo", "/foo/foo"}},
+		{"Two", []string{"/", "/foo", "/bar/foo"}, "foo", []string{"/bar/foo", "/foo"}},
+		{"Intermediate", []string{"/", "/foo", "/bar/foo", "/bar"}, "bar", []string{"/bar"}},
+	}
+
+	for _, test := range tableTests {
+		t.Run(test.name, func(t *testing.T) {
+			trie := New()
+			for _, key := range test.keys {
+				trie.Add(key, nil)
+			}
+
+			root, _ := trie.Find("/")
+			expected, nodes, err := trie.ExactSearchAtNode(test.search, root)
+			if err != nil {
+				t.Error(err)
+			}
+			if len(expected) != len(test.expectedKeys) {
+				t.Errorf("Expected %v paths, got %d, paths were: %v", len(test.expectedKeys), len(expected), expected)
+			}
+			if len(nodes) != len(test.expectedKeys) {
+				t.Errorf("Expected %v nodes, got %d, nodes were: %v", len(test.expectedKeys), len(nodes), nodes)
+			}
+
+			sort.Strings(expected)
+			for i, key := range expected {
+				if key != test.expectedKeys[i] {
+					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
+				}
+			}
+			// Make sure node paths match
+			paths := make([]string, 0)
+			for _, n := range nodes {
+				paths = append(paths, n.Path())
+			}
+			sort.Strings(paths)
+			for i, key := range paths {
+				if key != test.expectedKeys[i] {
+					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
+				}
+			}
+
+		})
+	}
+}
+
+func TestFirstRegexMatch(t *testing.T) {
+	tableTests := []struct {
+		name           string
+		keys           []string
+		search         string
+		expectedSuffix string
+	}{
+		{"One", []string{"/", "/foo/", "/bar/bar", "/foo/bar", "/bar/", "/aaa/", "/aaa/bar"}, ".*ba.*", "/bar"},
+	}
+
+	for _, test := range tableTests {
+		t.Run(test.name, func(t *testing.T) {
+			trie := New()
+			for _, key := range test.keys {
+				trie.Add(key, nil)
+			}
+
+			// The order of the result is non-deterministic. That's why we check that it only has
+			// the suffix
+			root, _ := trie.Find("/")
+			expected, node, err := trie.FirstRegexMatchAtNode(test.search, root)
+			if err != nil {
+				t.Error(err)
+			}
+			if !strings.HasSuffix(expected, test.expectedSuffix) {
+				t.Errorf("Expected suffix %v path, got %v", test.expectedSuffix, expected)
+			}
+
+			if !strings.HasSuffix(node.path, test.expectedSuffix) {
+				t.Errorf("Expected suffix %v path, got %v", test.expectedSuffix, node.path)
+			}
+		})
+	}
+}
+func TestListAtNode(t *testing.T) {
+	tableTests := []struct {
+		name         string
+		keys         []string
+		search       string
+		expectedKeys []string
+	}{
+		{"One", []string{"/", "/foo", "/foobar"}, "/", []string{"foo", "foobar"}},
+		{"Nested", []string{"/", "/foo/", "/foo/foo", "/foo/bar"}, "/foo/", []string{"bar", "foo"}},
+		{"Intermediate", []string{"/", "/foo/", "/foo/foo", "/foo/bar"}, "/", []string{"foo"}},
+	}
+
+	for _, test := range tableTests {
+		t.Run(test.name, func(t *testing.T) {
+			trie := New()
+			for _, key := range test.keys {
+				trie.Add(key, nil)
+			}
+
+			root, _ := trie.Find(test.search)
+
+			expected, nodes, err := trie.ListAtNode(test.search, root)
+			if err != nil {
+				t.Error(err)
+			}
+			if len(expected) != len(test.expectedKeys) {
+				t.Errorf("Expected %v paths, got %d, paths were: %v", len(test.expectedKeys), len(expected), expected)
+			}
+			if len(nodes) != len(test.expectedKeys) {
+				t.Errorf("Expected %v nodes, got %d, nodes were: %v", len(test.expectedKeys), len(nodes), nodes)
+			}
+
+			sort.Strings(expected)
+			for i, key := range expected {
+				if key != test.expectedKeys[i] {
+					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
+				}
+			}
+
+			// Make sure node names match
+			names := make([]string, 0)
+			for _, n := range nodes {
+				names = append(names, n.Name())
+			}
+			sort.Strings(names)
+			for i, key := range names {
+				if key != test.expectedKeys[i] {
+					t.Errorf("Expected %#v, got %#v", test.expectedKeys[i], key)
+				}
+			}
+
+		})
+	}
 }
 
 func BenchmarkTieKeys(b *testing.B) {

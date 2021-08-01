@@ -248,7 +248,7 @@ func (t Trie) FirstRegexMatchAtNode(s string, n *Node) (string, *Node, error) {
 	return res, found, nil
 }
 
-func (t Trie) ListAtNode(s string, n *Node) ([]string, []*Node, error) {
+func (t Trie) ListAtNode(n *Node) ([]string, []*Node, error) {
 	// Walk children until we find a dirSep, but don't recurse.
 	res := make([]string, 0)
 	nodes := make([]*Node, 0)

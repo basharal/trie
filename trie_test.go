@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -415,6 +416,40 @@ func TestExactSearchAtNode(t *testing.T) {
 	}
 }
 
+func TestFirstRegexMatch(t *testing.T) {
+	tableTests := []struct {
+		name           string
+		keys           []string
+		search         string
+		expectedSuffix string
+	}{
+		{"One", []string{"/", "/foo/", "/bar/bar", "/foo/bar", "/bar/", "/aaa/", "/aaa/bar"}, ".*ba.*", "/bar"},
+	}
+
+	for _, test := range tableTests {
+		t.Run(test.name, func(t *testing.T) {
+			trie := New()
+			for _, key := range test.keys {
+				trie.Add(key, nil)
+			}
+
+			// The order of the result is non-deterministic. That's why we check that it only has
+			// the suffix
+			root, _ := trie.Find("/")
+			expected, node, err := trie.FirstRegexMatchAtNode(test.search, root)
+			if err != nil {
+				t.Error(err)
+			}
+			if !strings.HasSuffix(expected, test.expectedSuffix) {
+				t.Errorf("Expected suffix %v path, got %v", test.expectedSuffix, expected)
+			}
+
+			if !strings.HasSuffix(node.path, test.expectedSuffix) {
+				t.Errorf("Expected suffix %v path, got %v", test.expectedSuffix, node.path)
+			}
+		})
+	}
+}
 func TestListAtNode(t *testing.T) {
 	tableTests := []struct {
 		name         string

@@ -7,6 +7,7 @@ package trie
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -44,7 +45,7 @@ func (a ByKeys) Less(i, j int) bool { return len(a[i]) < len(a[j]) }
 
 const nul = 0x0
 
-type WalkFunc func(node *Node, name, path string)
+type WalkFunc func(node *Node, name, path string) bool
 
 // Creates a new Trie with an initialized root Node.
 func New() *Trie {
@@ -213,11 +214,12 @@ func (t Trie) PrefixSearch(pre string) []string {
 func (t Trie) ExactSearchAtNode(s string, n *Node) ([]string, []*Node, error) {
 	res := make([]string, 0)
 	nodes := make([]*Node, 0)
-	walker := func(node *Node, name, path string) {
+	walker := func(node *Node, name, path string) bool {
 		if strings.EqualFold(s, name) {
 			res = append(res, path)
 			nodes = append(nodes, node)
 		}
+		return true
 	}
 	if err := t.WalkAtNode(n, walker, true); err != nil {
 		return nil, nil, err
@@ -225,13 +227,35 @@ func (t Trie) ExactSearchAtNode(s string, n *Node) ([]string, []*Node, error) {
 	return res, nodes, nil
 }
 
+func (t Trie) FirstRegexMatchAtNode(s string, n *Node) (string, *Node, error) {
+	res := ""
+	var found *Node = nil
+	re, err := regexp.Compile(s)
+	if err != nil {
+		return "", nil, err
+	}
+	walker := func(node *Node, name, path string) bool {
+		if re.MatchString(name) {
+			found = node
+			res = path
+			return false
+		}
+		return true
+	}
+	if err := t.WalkAtNode(n, walker, true); err != nil {
+		return "", nil, err
+	}
+	return res, found, nil
+}
+
 func (t Trie) ListAtNode(s string, n *Node) ([]string, []*Node, error) {
-	// Walk children until we find a dirSep
+	// Walk children until we find a dirSep, but don't recurse.
 	res := make([]string, 0)
 	nodes := make([]*Node, 0)
-	walker := func(node *Node, name, path string) {
+	walker := func(node *Node, name, path string) bool {
 		res = append(res, name)
 		nodes = append(nodes, node)
+		return true
 	}
 	if err := t.WalkAtNode(n, walker, false); err != nil {
 		return nil, nil, err
@@ -251,36 +275,40 @@ func (t Trie) WalkAtNode(n *Node, walker WalkFunc, nested bool) error {
 	return nil
 }
 
-func (t Trie) walkAtNode(n *Node, walker WalkFunc, name []rune, nested bool) {
+func (t Trie) walkAtNode(n *Node, walker WalkFunc, name []rune, nested bool) bool {
 	glog.V(2).Infof("Walking node: %+v, name: %s\n", n, string(name))
-	if n.Terminating() {
-		if len(name) > 0 { // Exclude root, which is empty
-			walker(n, string(name), n.path)
-		}
-		return
-	}
 	if n.parent.val == dirSep {
 		// Reset name after every nested directory.
 		name = []rune{n.val}
 	}
 	for r, child := range n.children {
 		if child.Terminating() {
-			t.walkAtNode(child, walker, name, nested)
+			if len(name) > 0 { // Exclude root, which is empty
+				if !walker(child, string(name), child.path) {
+					return false
+				}
+			}
 		} else {
 			if r == dirSep {
 				if nested {
-					t.walkAtNode(child, walker, name, nested)
+					if !t.walkAtNode(child, walker, name, nested) {
+						return false
+					}
 				} else {
-					walker(child.children[nul], string(name), child.children[nul].path)
+					if !walker(child.children[nul], string(name), child.children[nul].path) {
+						return false
+					}
 				}
 			} else {
 				name = append(name, r)
-				t.walkAtNode(child, walker, name, nested)
+				if !t.walkAtNode(child, walker, name, nested) {
+					return false
+				}
 				name = name[:len(name)-1]
 			}
 		}
-
 	}
+	return true
 }
 
 // Creates and returns a pointer to a new child for the node.
